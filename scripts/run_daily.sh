@@ -12,8 +12,8 @@ else
     DATE="$DATE_ARG"
 fi
 
-if [ "$(date -d "$DATE" +%u)" -ge 6 ]; then
-    echo "=== [$DATE] 주말이라 수집·요약을 건너뜁니다 ==="
+if python3 -c "import sys,datetime as d,holidays; x=d.date.fromisoformat(sys.argv[1]); sys.exit(0 if x.weekday()>=5 or x in holidays.KR() else 1)" "$DATE"; then
+    echo "=== [$DATE] 주말·공휴일이라 수집·요약을 건너뜁니다 ==="
     exit 0
 fi
 

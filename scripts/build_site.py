@@ -5,9 +5,12 @@ site/ 는 그대로 git repo로 push -> Vercel 등에서 자동 배포하면 된
 
 콘텐츠는 passphrase로만 복호화되는 형태로 굽는다 (site_crypto.py 참고).
 """
+import datetime as dt
 import json
 import re
 from pathlib import Path
+
+import holidays
 
 from site_crypto import encrypt_json
 
@@ -22,8 +25,13 @@ GATE_ENABLED = False
 MARKET_CATEGORY_FILES = ("macro.md", "bond.md", "sector.md")
 
 
+KR_HOLIDAYS = holidays.KR()
+
+
 def is_business_day(date: str) -> bool:
-    """주말·공휴일에는 시장 카테고리 리포트가 생성되지 않으므로 파일 유무로 판정."""
+    d = dt.date.fromisoformat(date)
+    if d.weekday() >= 5 or d in KR_HOLIDAYS:
+        return False
     folder = OUTPUT_DIR / date
     return any((folder / name).exists() for name in MARKET_CATEGORY_FILES)
 

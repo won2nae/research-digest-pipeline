@@ -17,6 +17,7 @@ NEWS_TOOLS = (
     "mcp__claude_ai_NewsMCP_without_a_key__news,"
     "mcp__claude_ai_NewsMCP_without_a_key__check_coverage"
 )
+NEWS_DENIED_MARKERS = ("허용되지 않", "도구 권한", "권한 프롬프트")
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -121,9 +122,13 @@ def get_news_context(results: list[dict]) -> str:
             [CLAUDE_BIN, "-p", "--allowedTools", NEWS_TOOLS],
             input=prompt, capture_output=True, text=True, timeout=120,
         )
-        if result.returncode != 0 or not result.stdout.strip():
+        text = result.stdout.strip()
+        if result.returncode != 0 or not text:
             return ""
-        return result.stdout.strip()
+        if any(marker in text for marker in NEWS_DENIED_MARKERS):
+            print("[news] 뉴스 도구 권한 오류 응답이라 뉴스 블록을 생략함", file=sys.stderr)
+            return ""
+        return text
     except Exception:
         return ""
 
