@@ -1,6 +1,7 @@
 """수집된 리포트(JSON)를 로컬 Qwen3-14B로 요약해 md로 저장.
 """
 import json
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -145,7 +146,13 @@ def main():
             shocks=shock_summary,
         )
         print(f"[{label}] {len(reports)}건 요약 중... (과거 참고 {history_count}건)")
-        digests[label] = generate(prompt)
+        result = generate(prompt)
+        # 제목은 모델이 베껴 쓰다 오타 내는 경우가 있어 (예: "매큰로") 코드가 직접 강제한다.
+        if result.lstrip().startswith("##"):
+            result = re.sub(r"^##.*\n", f"## {kr_label}\n", result.lstrip(), count=1)
+        else:
+            result = f"## {kr_label}\n\n{result}"
+        digests[label] = result
         (out_dir / f"{label}.md").write_text(digests[label], encoding="utf-8")
 
     # 투자전략에 AI 종합의견 추가 (안내문구는 코드로 고정, 모델은 본문만 생성)
