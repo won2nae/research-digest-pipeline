@@ -1,7 +1,7 @@
 """수집된 리포트(JSON)를 로컬 Qwen3-14B로 요약해 md로 저장.
 """
+import difflib
 import json
-import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -100,6 +100,23 @@ def format_reports(reports: list[dict]) -> str:
     return "\n\n---\n\n".join(blocks)
 
 
+def enforce_structure(text: str, kr_label: str) -> str:
+    """모델이 카테고리 제목(## {label})을 빼먹거나 오타 내고, 개별 이슈 제목에
+    ###가 아닌 ##를 쓰는 경우가 있다 (예: 2026-10-06 채권/섹터/투자전략).
+    카테고리 제목으로 보이는 줄은 버리고, 나머지 '## '는 전부 '### '로 낮춘 뒤
+    정식 제목을 맨 위에 한 번만 붙여서 항상 같은 구조를 보장한다."""
+    out = []
+    for line in text.split("\n"):
+        if line.startswith("## "):
+            title = line[3:].strip()
+            if difflib.SequenceMatcher(None, title, kr_label).ratio() > 0.5:
+                continue
+            line = "###" + line[2:]
+        out.append(line)
+    body = "\n".join(out).strip("\n")
+    return f"## {kr_label}\n\n{body}"
+
+
 def generate(prompt: str) -> str:
     return ask_local(prompt, model_name=LOCAL_MODEL, max_new_tokens=8192, repetition_penalty=1.2)
 
@@ -147,12 +164,7 @@ def main():
         )
         print(f"[{label}] {len(reports)}건 요약 중... (과거 참고 {history_count}건)")
         result = generate(prompt)
-        # 제목은 모델이 베껴 쓰다 오타 내는 경우가 있어 (예: "매큰로") 코드가 직접 강제한다.
-        if result.lstrip().startswith("##"):
-            result = re.sub(r"^##.*\n", f"## {kr_label}\n", result.lstrip(), count=1)
-        else:
-            result = f"## {kr_label}\n\n{result}"
-        digests[label] = result
+        digests[label] = enforce_structure(result, kr_label)
         (out_dir / f"{label}.md").write_text(digests[label], encoding="utf-8")
 
     # 투자전략에 AI 종합의견 추가 (안내문구는 코드로 고정, 모델은 본문만 생성)

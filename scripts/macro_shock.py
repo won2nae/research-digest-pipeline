@@ -128,9 +128,23 @@ def get_news_context(results: list[dict]) -> str:
         if any(marker in text for marker in NEWS_DENIED_MARKERS):
             print("[news] 뉴스 도구 권한 오류 응답이라 뉴스 블록을 생략함", file=sys.stderr)
             return ""
-        return text
+        return demote_headings(text)
     except Exception:
         return ""
+
+
+def demote_headings(text: str) -> str:
+    """뉴스 검색 응답이 가끔 자기만의 '## 제목'을 달아서, digest 조립 시 독립 카테고리처럼
+    잘못 쪼개지는 사고가 났다 (2026-10-06). '### 관련 뉴스' 아래 안전하게 들어가도록
+    모든 마크다운 헤더를 굵은 글씨로 낮춘다."""
+    lines = []
+    for line in text.split("\n"):
+        stripped = line.lstrip("#").strip()
+        if line.startswith("#") and stripped:
+            lines.append(f"**{stripped}**")
+        else:
+            lines.append(line)
+    return "\n".join(lines)
 
 
 def main():
