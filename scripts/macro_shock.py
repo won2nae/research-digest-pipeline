@@ -88,14 +88,17 @@ def check_shocks(items: list[dict]) -> list[dict]:
 
 
 def format_summary(results: list[dict]) -> str:
+    # 고정 임계값을 "객관적 기준"처럼 문장에 내세우지 않는다 (사이트에서는 보는 사람이
+    # 직접 기준을 조절할 수 있게 했다 - 여기 내부 THRESHOLDS는 뉴스 검색을 돌릴지
+    # 판단하는 운영상의 트리거일 뿐, 독자에게 제시하는 공인된 기준이 아니다).
     shocks = [r for r in results if r["triggered"]]
     if not shocks:
-        return "오늘 임계값을 넘는 매크로 충격 지표는 없었습니다."
+        return "오늘 두드러진 매크로 지표 변동은 감지되지 않았습니다."
     lines = ["## 오늘의 매크로 충격 지표\n"]
     for s in shocks:
         lines.append(
             f"- **{s['label']}** {s['direction']} {s['magnitude']:+.2f}{s['unit']} "
-            f"(현재 {s['current']}, 전일 {s['last_close']}, 임계값 {s['threshold']}{s['unit']} 초과)"
+            f"(현재 {s['current']}, 전일 {s['last_close']})"
         )
     return "\n".join(lines)
 

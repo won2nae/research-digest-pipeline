@@ -80,7 +80,7 @@ def synth_shock_block(market: dict) -> str:
             f"- **{ind['label']}** {direction} {ind['change']:+.2f}{ind['unit']} "
             f"(현재 {ind['value']:,}, 전일 대비)"
         )
-    note = "오늘은 임계값을 넘는 매크로 충격 지표가 없었습니다."
+    note = "오늘은 코스피·코스닥 모두 뚜렷한 변동 없이 마감했습니다."
     return "## 오늘의 매크로 충격 지표\n\n" + "\n".join(lines) + f"\n\n_{note}_"
 
 
