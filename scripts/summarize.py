@@ -6,7 +6,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from local_llm import ask_local
+from dart_agent import get_company_analysis
+from local_llm import ask_local, CATEGORY_TO_GROUP
 from macro_shock import format_summary as format_shock_summary, fetch_indicators, check_shocks
 from vectorstore import search as vector_search
 
@@ -19,6 +20,15 @@ CATEGORY_LABELS = {
     "bond": "채권",
     "sector": "산업 섹터별",
     "strategy": "투자전략",
+}
+
+# 매크로/채권은 지표·수치 중심이라 일관성이 중요해 temperature를 낮게,
+# 섹터/투자전략은 여러 리포트를 엮어 해석하는 서술이라 조금 더 높게 둔다.
+CATEGORY_TEMPERATURE = {
+    "macro": 0.5,
+    "bond": 0.5,
+    "sector": 0.65,
+    "strategy": 0.65,
 }
 
 DIGEST_PROMPT = """너는 거시경제·금융시장을 오래 분석해온 시니어 애널리스트다.
@@ -45,6 +55,7 @@ DIGEST_PROMPT = """너는 거시경제·금융시장을 오래 분석해온 시�
 
 --- 오늘의 매크로 충격 지표 (참고, 관련 있으면 이슈 설명에 자연스럽게 반영) ---
 {shocks}
+
 """
 
 
@@ -86,6 +97,12 @@ STRATEGY_DISCLAIMER = (
     "투자 판단이나 시장 전망을 제시하지 않습니다. 판단은 읽는 사람의 몫입니다.**"
 )
 
+DART_DISCLAIMER = (
+    "> **아래는 위 투자전략·섹터 리포트에서 비중 있게 다뤄진 기업을 DART 전자공시로 "
+    "대조한 것입니다. 증권사 주장과 실제 공시·재무제표가 일치하는지만 확인하며, "
+    "투자 판단을 제시하지 않습니다.**"
+)
+
 
 def load_reports(data_dir: Path, label: str) -> list[dict]:
     path = data_dir / f"naver_{label}.json"
@@ -118,8 +135,14 @@ def enforce_structure(text: str, kr_label: str) -> str:
     return f"## {kr_label}\n\n{body}"
 
 
-def generate(prompt: str) -> str:
-    return ask_local(prompt, model_name=LOCAL_MODEL, max_new_tokens=8192, repetition_penalty=1.2)
+def generate(prompt: str, category: str) -> str:
+    # no_repeat_ngram_size=4를 시도했으나 반복 루프보다 더 나쁜 실패(한자 섞인 비문,
+    # 가비지 출력)로 2연속 재현돼서 되돌림 - 2026-11-01 테스트로 확인.
+    return ask_local(
+        prompt, model_name=LOCAL_MODEL, max_new_tokens=8192, repetition_penalty=1.2,
+        adapter_group=CATEGORY_TO_GROUP.get(category),
+        temperature=CATEGORY_TEMPERATURE.get(category, 0.6),
+    )
 
 
 def generate_short(prompt: str) -> str:
@@ -151,6 +174,8 @@ def main():
     print(f"[shock] {shock_summary.splitlines()[0]}")
 
     digests = {}
+    sector_reports_text = ""
+    company_analysis = ""
     for label, kr_label in CATEGORY_LABELS.items():
         reports = load_reports(data_dir, label)
         if not reports:
@@ -159,14 +184,32 @@ def main():
         history = historical_context(reports, label, today)
         has_history = history not in ("(없음)",) and not history.startswith("(과거 데이터 없음") and not history.startswith("(검색 실패")
         history_count = history.count(chr(10)) + 1 if has_history else 0
+
+        if label == "sector":
+            sector_reports_text = format_reports(reports)
+        elif label == "strategy":
+            print(f"[{label}] DART 기업분석 에이전트 실행 중...")
+            combined = sector_reports_text + "\n\n---\n\n" + format_reports(reports)
+            company_analysis = get_company_analysis(today, combined)
+
         prompt = DIGEST_PROMPT.format(
             today=today, label=kr_label, content=format_reports(reports), history=history,
             shocks=shock_summary,
         )
         print(f"[{label}] {len(reports)}건 요약 중... (과거 참고 {history_count}건)")
-        result = generate(prompt)
+        result = generate(prompt, label)
         digests[label] = enforce_structure(result, kr_label)
         (out_dir / f"{label}.md").write_text(digests[label], encoding="utf-8")
+
+    # DART 기업분석 추가 (모델이 프롬프트에 끼워줘도 본문에 거의 반영 안 해서 - 4차례 실험으로 확인함 -
+    # 별도 섹션으로 코드가 직접 붙인다. 내용 생성은 dart_agent가 이미 끝낸 상태)
+    if company_analysis:
+        dart_section = f"## 기업 공시 검증 (DART)\n\n{DART_DISCLAIMER}\n\n{company_analysis}"
+        digests["strategy"] = digests["strategy"] + "\n\n" + dart_section
+        (out_dir / "strategy.md").write_text(digests["strategy"], encoding="utf-8")
+        # 다른 카테고리처럼 독립된 산출물로도 남긴다 (별도 에이전트의 결과물이라는 걸
+        # output에서도 바로 확인할 수 있게)
+        (out_dir / "dart_analysis.md").write_text(dart_section, encoding="utf-8")
 
     # 투자전략에 AI 종합의견 추가 (안내문구는 코드로 고정, 모델은 본문만 생성)
     print("[strategy] AI 종합의견 생성 중...")

@@ -3,6 +3,10 @@
     "research-archive": {
       "command": "python3",
       "args": ["mcp_server.py"]
+    },
+    "dart-disclosures": {
+      "command": "python3",
+      "args": ["dart_mcp_server.py"]
     }
   }
 }

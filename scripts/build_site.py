@@ -84,6 +84,11 @@ def synth_shock_block(market: dict) -> str:
     return "## 오늘의 매크로 충격 지표\n\n" + "\n".join(lines) + f"\n\n_{note}_"
 
 
+def load_news(date: str) -> str:
+    path = DATA_DIR / date / "news_summary.md"
+    return path.read_text(encoding="utf-8").strip() if path.exists() else ""
+
+
 def load_digest(date: str) -> dict | None:
     path = OUTPUT_DIR / date / f"digest_{date}.md"
     if not path.exists():
@@ -108,6 +113,7 @@ def load_digest(date: str) -> dict | None:
         "headline": headline,
         "market": market,
         "shock_md": shock_md,
+        "news_md": load_news(date),
         "tabs": tabs,
     }
 
@@ -161,8 +167,13 @@ def render_day_page(digest: dict) -> str:
     return render_page(f"{digest['date']} 리서치 브리핑", "../../", digest, "day")
 
 
-def render_index_page(days: list[dict]) -> str:
-    return render_page("리서치 브리핑 아카이브", "", {"days": days}, "index")
+def render_index_page(days: list[dict], news_md: str, generated_at: str) -> str:
+    payload = {"days": days, "news_md": news_md, "generated_at": generated_at}
+    return render_page("시장 브리핑", "", payload, "index")
+
+
+def render_reports_page(days: list[dict]) -> str:
+    return render_page("Reports — 시장 브리핑", "../", {"days": days}, "reports")
 
 
 def main():
@@ -186,6 +197,7 @@ def main():
                 stale.rmdir()
 
     days = []
+    latest_news_md = ""
     for date in dates:
         digest = load_digest(date)
         if digest is None:
@@ -194,10 +206,16 @@ def main():
         day_dir.mkdir(parents=True, exist_ok=True)
         (day_dir / "index.html").write_text(render_day_page(digest), encoding="utf-8")
         days.append({"date": date, "headline": digest["headline"], "market": digest["market"]})
+        latest_news_md = digest["news_md"]  # dates는 오래된->최신 순이라 마지막이 최신
+
+    days_desc = sorted(days, key=lambda d: d["date"], reverse=True)
+    generated_at = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
 
     (SITE_DIR / "index.html").write_text(
-        render_index_page(sorted(days, key=lambda d: d["date"], reverse=True)), encoding="utf-8"
+        render_index_page(days_desc, latest_news_md, generated_at), encoding="utf-8"
     )
+    (SITE_DIR / "reports").mkdir(parents=True, exist_ok=True)
+    (SITE_DIR / "reports" / "index.html").write_text(render_reports_page(days_desc), encoding="utf-8")
 
     print(f"완료: {len(days)}개 영업일 -> {SITE_DIR}")
 

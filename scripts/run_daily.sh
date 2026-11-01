@@ -23,6 +23,9 @@ python3 scripts/collect.py "$DATE"
 echo "=== [$DATE] 2. 매크로 충격 지표 탐지 ==="
 python3 scripts/macro_shock.py "$DATE"
 
+echo "=== [$DATE] 2.5 전날 뉴스 요약 (미국 메인 + 한국 서브) ==="
+python3 scripts/news_summary.py "$DATE"
+
 echo "=== [$DATE] 3. 벡터DB 적재 ==="
 python3 scripts/vectorstore.py "$DATE"
 
