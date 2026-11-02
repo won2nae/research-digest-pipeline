@@ -107,6 +107,50 @@ def search_disclosures(company_name: str, bgn_de: str, end_de: str, page_count: 
     return data.get("list", [])
 
 
+REPRT_LABELS = {"11013": "1분기(1~3월 누적)", "11012": "반기(1~6월 누적)", "11014": "3분기(1~9월 누적)", "11011": "연간"}
+
+
+def list_cached_financials(company_name: str) -> list[dict]:
+    """이 회사에 대해 지금까지 조회해서 쌓인 재무정보 전체를 기간순으로 반환한다.
+    DART_ARCHIVE에 회사를 조회할 때마다 자동으로 쌓이므로(get_financial_summary),
+    파이프라인이 매일 돌수록 같은 회사의 여러 분기가 자연스럽게 모인다.
+    각 보고서는 당기 하나의 스냅샷이고 분기값이 '해당 분기까지 누적'이라 결과에
+    reprt_code 라벨을 그대로 남겨 호출하는 쪽이 누적 여부를 헷갈리지 않게 한다."""
+    corp = find_corp(company_name)
+    if not corp:
+        return []
+    d = DART_ARCHIVE / _safe_name(corp["name"])
+    if not d.exists():
+        return []
+    key_accounts = {"자산총계", "부채총계", "자본총계", "매출액", "영업이익"}
+    net_income_names = {"당기순이익", "반기순이익", "분기순이익"}
+    periods = []
+    for f in sorted(d.glob("financials_*.json")):
+        m = re.match(r"financials_(\d{4})_(\d{5})\.json", f.name)
+        if not m:
+            continue
+        year, reprt_code = m.groups()
+        rows = json.loads(f.read_text(encoding="utf-8"))
+        amounts = {}
+        for r in rows:
+            name = r.get("account_nm", "")
+            sj = r.get("sj_div", "")
+            if sj == "BS" and name in key_accounts:
+                amounts[name] = r.get("thstrm_amount")
+            elif sj in ("IS", "CIS") and (name in key_accounts or name in net_income_names):
+                amounts["당기순이익" if name in net_income_names else name] = r.get("thstrm_amount")
+        if amounts:
+            periods.append({
+                "year": year, "reprt_code": reprt_code,
+                "label": f"{year} {REPRT_LABELS.get(reprt_code, reprt_code)}",
+                **amounts,
+            })
+    # reprt_code는 숫자 순서가 분기 순서와 다름 (11013=1분기, 11012=반기, 11014=3분기, 11011=연간)
+    reprt_order = {"11013": 0, "11012": 1, "11014": 2, "11011": 3}
+    periods.sort(key=lambda p: (p["year"], reprt_order.get(p["reprt_code"], 9)))
+    return periods
+
+
 def get_financial_summary(company_name: str, year: str, reprt_code: str = "11013") -> list[dict]:
     """주요계정 재무정보. reprt_code: 11013=1분기, 11012=반기, 11014=3분기, 11011=사업보고서(연간)."""
     corp = find_corp(company_name)

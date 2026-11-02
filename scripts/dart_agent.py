@@ -2,8 +2,9 @@
 
 오늘의 투자전략/산업섹터 리포트에서 실제로 비중 있게 다뤄진 기업을 추려서,
 DART 공시·재무제표로 사실을 검증·보강한 참고자료를 만든다. 투자전략 생성
-프롬프트에 이 결과를 끼워 넣어, 모델이 증권사 주장과 실제 공시 수치를
-대조할 수 있게 한다.
+프롬프트에 끼워 넣는 방식은 4차례 실험으로 모델이 거의 반영하지 않는 걸 확인해서
+포기했고, 지금은 이 에이전트의 결과를 summarize.py가 코드로 직접 별도 섹션으로
+붙인다 ("## 기업 공시 검증 (DART)").
 """
 import shutil
 import subprocess
@@ -12,7 +13,11 @@ from pathlib import Path
 
 CLAUDE_BIN = shutil.which("claude") or "/usr/local/bin/claude"
 ROOT = Path(__file__).resolve().parent.parent  # .mcp.json이 여기 있음 - claude -p가 찾으려면 cwd가 이거여야 함
-DART_TOOLS = "mcp__dart-disclosures__dart_search_disclosures,mcp__dart-disclosures__dart_financial_summary"
+DART_TOOLS = (
+    "mcp__dart-disclosures__dart_search_disclosures,"
+    "mcp__dart-disclosures__dart_financial_summary,"
+    "mcp__dart-disclosures__dart_financial_trend"
+)
 
 AGENT_PROMPT = """아래는 오늘({today}) 투자전략/산업섹터 리포트에서 다룬 내용이다.
 
@@ -22,7 +27,10 @@ AGENT_PROMPT = """아래는 오늘({today}) 투자전략/산업섹터 리포트�
 1. dart_search_disclosures로 최근 30일 공시를 확인해라. as_of_date는 반드시 {today}로 줘라
    ({today} 이후 공시는 존재할 수 없으니 조회하지 마라 — look-ahead bias 방지).
 2. dart_financial_summary로 가장 최근 분기 재무정보를 확인해라.
-3. 리포트의 주장(실적, 성장률 등)이 실제 공시·재무제표 수치와 일치하는지 짧게 대조해라.
+3. 리포트가 "N분기 연속", "YoY 성장", "실적 모멘텀" 같은 추세를 주장하면,
+   dart_financial_trend로 그동안 쌓인 과거 분기와 비교해서 그 추세 주장이
+   맞는지 확인해라 (쌓인 기간이 1건뿐이면 비교 불가하니 생략해도 됨).
+4. 리포트의 주장(실적, 성장률 등)이 실제 공시·재무제표 수치와 일치하는지 짧게 대조해라.
    일치하면 "공시 기준과 일치"라고만 쓰고 길게 설명하지 마라. 불일치하거나 공시에서
    추가로 확인되는 중요 사실이 있을 때만 구체적으로 짚어라.
 

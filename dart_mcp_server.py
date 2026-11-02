@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts"))
-from dart_client import search_disclosures, get_financial_summary
+from dart_client import search_disclosures, get_financial_summary, list_cached_financials
 
 from mcp.server.mcpserver import MCPServer
 
@@ -112,6 +112,33 @@ def dart_financial_summary(company_name: str, year: str, quarter: str = "3") -> 
         lines.append("")
         lines.append("[계산된 비율 - 전기 대비, 단순 계산치]")
         lines.extend(ratio_lines)
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def dart_financial_trend(company_name: str) -> str:
+    """지금까지 조회해서 쌓인 이 회사의 재무정보를 기간순으로 전부 보여준다
+    (분기별 성장세·추이를 확인할 때 씀). 파이프라인이 매일 돌수록 더 많은
+    분기가 쌓인다 - 아직 1~2건뿐이면 추이 판단에 참고하기엔 부족하다.
+
+    주의: 분기 값은 '해당 분기까지의 누적'이다 (반기=1~6월 누적, 3분기=1~9월
+    누적). 분기끼리 단순 비교하면 안 되고, 라벨을 보고 누적 여부를 확인해라.
+
+    Args:
+        company_name: 정식 상호명 또는 약칭
+    """
+    periods = list_cached_financials(company_name)
+    if not periods:
+        return f"'{company_name}'은(는) 아직 쌓인 재무정보가 없음 (dart_financial_summary로 먼저 조회해야 쌓임)"
+    if len(periods) == 1:
+        return f"'{company_name}'은(는) 아직 {periods[0]['label']} 1건만 쌓여서 추이 비교 불가"
+
+    lines = [f"[{company_name} 누적 재무 추이 - {len(periods)}개 기간]"]
+    for p in periods:
+        lines.append(
+            f"- {p['label']}: 매출액 {p.get('매출액', '?')}, 영업이익 {p.get('영업이익', '?')}, "
+            f"당기순이익 {p.get('당기순이익', '?')}"
+        )
     return "\n".join(lines)
 
 
