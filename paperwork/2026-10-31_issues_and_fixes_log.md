@@ -171,7 +171,40 @@ DART 에이전트가 한 회사의 여러 분기 재무정보를 한 번에 비�
   캐시된 반기 데이터 사이 누적 기준 불일치 가능성을 스스로 짚어냄. 부수적으로
   LG에너지솔루션 리포트가 언급하지 않은 "횡령·배임혐의발생" 공시(10/14)를 찾아냄.
 
-## G. 조사만 하고 구현하지 않은 것
+## G. 지식그래프 + 공개 채팅 (2026-11-04)
+
+"재무정보를 RAG로 구축"에서 더 나아가, "지금 구조를 안 건드리고 지식그래프를 적용할 수 있나"는
+질문에서 출발. 벡터 임베딩 대신, 이미 있는 DART corp_code(기업 canonical ID)를 축으로
+`data/`·`output/`·`DART/`를 **읽기만 해서** 그래프를 뽑아내는 파생 레이어로 설계·구현함
+(기존 파이프라인 파일은 전혀 수정 안 함, `vectorstore.py`와 같은 패턴).
+
+- `scripts/build_graph.py` (신설): Company/FinancialPeriod/Report/Broker/DailyBriefing 노드,
+  HAS_PERIOD/PUBLISHED_BY/MENTIONS/VERIFIED/INCLUDES 엣지. `networkx` 사용(Neo4j 등 DB 서버는
+  혼자 하는 프로젝트엔 과함).
+- 기업 언급(MENTIONS) 추출은 LLM 호출 없이, 이미 가진 corp_code 사전(3,979개)으로 단순 문자열
+  매칭만 사용. 2글자 이하 회사명(SK, LG, CJ 등)은 오탐이 많아 매칭에서 제외.
+- 과거 전체 이력(2007~2026, 4,724일)에 한 번 풀 백필 — 4분 31초, 노드 113,911개·엣지
+  294,198개, `graph/kg.json`(로컬 전용, 50MB, gitignore 대상).
+- 사이트 공개용은 최근 120일만 별도로 작게 뽑음(`--days`/`--out` 옵션 추가) — `site/data/graph.json`
+  (3.2MB) + `site/data/digests.json`(기존에 이미 공개된 일별 브리핑 내용을 한 파일로, 1.3MB).
+  `build_site.py`가 배포 때마다 같이 구움 → `run_daily.sh`에 자동으로 포함됨.
+
+**공개 채팅** (`site/chat/`, `site/api/chat.py`): 방문자가 자연어로 질문하면 Claude API가
+`get_daily_briefing`/`search_briefings`/`company_lookup` 세 도구로 위 공개 데이터를 조회해
+답변 (dart_agent.py와 같은 tool-use 패턴). 설계 결정:
+- **벡터 RAG 대신 그래프+키워드 조회**: 숫자·날짜는 근사 유사도보다 정확한 조회가 중요하다는
+  원칙을 여기도 그대로 적용.
+- **로컬 Qwen 대신 Claude API**: 공개 기능이라 이 개인 서버를 상시 노출시키지 않는 쪽을 택함.
+  Vercel Python 서버리스 함수(`site/api/*.py`)로 배포, API 키·그래프 등 비공개 데이터는 전혀
+  노출 안 됨.
+- **요청마다 과금되므로 남용 방지 필요** — Upstash Redis REST API로 IP당 하루 20건 제한
+  (환경변수 없으면 로컬 테스트용으로 통과시킴, fail-open).
+- 로컬에서 데이터 조회 함수 3종 + HTTP 핸들러(에러 처리, 메시지 길이 제한, 빈 메시지 거부)까지
+  전부 단위 테스트 완료. 실제 Claude API 호출 왕복은 API 키가 있어야 해서 미검증 — **배포 전
+  수동 설정 필요**: Anthropic API 키(Claude Code 구독과 별개, console.anthropic.com에서 발급
+  필요) + Upstash Redis 무료 티어 + Vercel 환경변수 등록.
+
+## I. 조사만 하고 구현하지 않은 것
 
 - **출처 간 지표 교차검증** (블룸버그/인베스팅 데이터와 비교): 자소서에도 "다음 개선 과제"로 명시, 미착수.
 
@@ -180,4 +213,4 @@ DART 에이전트가 한 회사의 여러 분기 재무정보를 한 번에 비�
 1. "OO증권에 따르면" 카탈로그 문체 — 프롬프트 수정 필요 (원인은 확인됐으나 아직 미수정)
 2. 미·한 지표 기준일 분리 표기 — 미구현
 3. 2026-10-27 매크로 리포트의 "러시아-우크라이나 전쟁" 등 완전 무관한 환각 콘텐츠 — 반복 탐지와 별개의 문제, 원인 조사 안 됨
-4. DART 에이전트의 `dart_financial_summary`가 원시 계정값만 반환 (영업이익률·ROE·YoY 성장률 등 비율 미계산) — 사용자 확인만 받고 아직 추가 안 함
+4. 공개 채팅 배포 전 수동 설정 — Anthropic API 키 발급, Upstash Redis 설정, Vercel 환경변수 등록 (코드는 완성·테스트됨, 실제 Claude API 왕복만 미검증)

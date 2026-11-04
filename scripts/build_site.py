@@ -8,6 +8,8 @@ site/ 는 그대로 git repo로 push -> Vercel 등에서 자동 배포하면 된
 import datetime as dt
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import holidays
@@ -198,6 +200,7 @@ def main():
 
     days = []
     latest_news_md = ""
+    digests_by_date = {}
     for date in dates:
         digest = load_digest(date)
         if digest is None:
@@ -207,6 +210,9 @@ def main():
         (day_dir / "index.html").write_text(render_day_page(digest), encoding="utf-8")
         days.append({"date": date, "headline": digest["headline"], "market": digest["market"]})
         latest_news_md = digest["news_md"]  # dates는 오래된->최신 순이라 마지막이 최신
+        digests_by_date[date] = {
+            "date": date, "headline": digest["headline"], "tabs": digest["tabs"],
+        }
 
     days_desc = sorted(days, key=lambda d: d["date"], reverse=True)
     generated_at = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -216,6 +222,20 @@ def main():
     )
     (SITE_DIR / "reports").mkdir(parents=True, exist_ok=True)
     (SITE_DIR / "reports" / "index.html").write_text(render_reports_page(days_desc), encoding="utf-8")
+
+    # 공개 채팅(site/api/chat.py)이 읽는 공개 데이터 스냅샷. digests.json은 이미 사이트에
+    # 공개된 내용 그대로고(일별 페이지에 똑같이 보임), graph.json은 build_graph.py가
+    # 최근 N일만 뽑은 작은 버전 (전체 이력 그래프는 로컬에만 둠 - graph/kg.json).
+    site_data_dir = SITE_DIR / "data"
+    site_data_dir.mkdir(parents=True, exist_ok=True)
+    (site_data_dir / "digests.json").write_text(
+        json.dumps(digests_by_date, ensure_ascii=False), encoding="utf-8"
+    )
+    subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "build_graph.py"), "--days", "120",
+         "--out", str(site_data_dir / "graph.json")],
+        check=False,
+    )
 
     print(f"완료: {len(days)}개 영업일 -> {SITE_DIR}")
 
