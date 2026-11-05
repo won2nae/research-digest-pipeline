@@ -2,6 +2,7 @@
 """
 import difflib
 import json
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -204,6 +205,10 @@ def main():
     # DART 기업분석 추가 (모델이 프롬프트에 끼워줘도 본문에 거의 반영 안 해서 - 4차례 실험으로 확인함 -
     # 별도 섹션으로 코드가 직접 붙인다. 내용 생성은 dart_agent가 이미 끝낸 상태)
     if company_analysis:
+        # DART 에이전트가 기업마다 "## 회사명"을 쓰는데, build_site.py의 parse_categories가
+        # "\n## "마다 최상위 탭으로 쪼개버려서 기업명이 매크로/채권급 탭으로 노출되는 버그가
+        # 있었다 (2026-11-05). "### "로 한 단계 낮춰서 DART 탭 안의 하위 섹션으로만 보이게 한다.
+        company_analysis = re.sub(r"^## ", "### ", company_analysis, flags=re.MULTILINE)
         dart_section = f"## 기업 공시 검증 (DART)\n\n{DART_DISCLAIMER}\n\n{company_analysis}"
         digests["strategy"] = digests["strategy"] + "\n\n" + dart_section
         (out_dir / "strategy.md").write_text(digests["strategy"], encoding="utf-8")
