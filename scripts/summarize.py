@@ -210,8 +210,8 @@ def main():
         # 있었다 (2026-11-05). "### "로 한 단계 낮춰서 DART 탭 안의 하위 섹션으로만 보이게 한다.
         company_analysis = re.sub(r"^## ", "### ", company_analysis, flags=re.MULTILINE)
         dart_section = f"## 기업 공시 검증 (DART)\n\n{DART_DISCLAIMER}\n\n{company_analysis}"
-        digests["strategy"] = digests["strategy"] + "\n\n" + dart_section
-        (out_dir / "strategy.md").write_text(digests["strategy"], encoding="utf-8")
+        # 2026-11-13: 사이트에 "기업 공시 검증 (DART)" 탭이 노출되지 않도록 strategy.md에는
+        # 더 이상 붙이지 않는다. dart_analysis.md로만 남긴다.
         # 다른 카테고리처럼 독립된 산출물로도 남긴다 (별도 에이전트의 결과물이라는 걸
         # output에서도 바로 확인할 수 있게)
         (out_dir / "dart_analysis.md").write_text(dart_section, encoding="utf-8")
