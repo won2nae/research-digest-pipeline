@@ -1,0 +1,228 @@
+<title>LoRA 어댑터 해부도</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/*
+  레이아웃: 위→아래로 세 장면(추론 중 사용 / 내부 구조 / 학습으로 만들어짐)을 순서대로 읽는 세로 스크롤.
+  색: 회색=베이스 모델(고정, 큼) / 주황=어댑터(학습됨, 작음) — 이 매핑을 세 그림 내내 유지한다.
+*/
+:root{
+  --bg:#F4F5F7; --surface:#FFFFFF; --ink:#1A1D23; --ink-muted:#5B6472; --border:#DCE0E6;
+  --frozen:#6B7280; --frozen-soft:#E9EAEC;
+  --adapter:#C2630A; --adapter-soft:#FBE8D3;
+  --shadow:0 1px 2px rgba(16,24,40,.05), 0 6px 16px rgba(16,24,40,.05);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14171C; --surface:#1B1F26; --ink:#E6E8EB; --ink-muted:#9AA3AF; --border:#2A2F37;
+    --frozen:#9AA3AF; --frozen-soft:#232830;
+    --adapter:#F0A54D; --adapter-soft:#2E2213;
+    --shadow:none;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14171C; --surface:#1B1F26; --ink:#E6E8EB; --ink-muted:#9AA3AF; --border:#2A2F37;
+  --frozen:#9AA3AF; --frozen-soft:#232830;
+  --adapter:#F0A54D; --adapter-soft:#2E2213;
+  --shadow:none;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans KR",system-ui,sans-serif;line-height:1.7}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.wrap{max-width:720px;margin:0 auto;padding:32px 20px 72px}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--adapter)}
+h1{font-size:26px;font-weight:700;margin:6px 0 10px;letter-spacing:-.01em;text-wrap:balance}
+.lede{color:var(--ink-muted);font-size:15px;margin:0 0 8px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin:18px 0 36px;font-size:13px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.swatch{width:12px;height:12px;border-radius:3px;display:inline-block}
+.swatch.frozen{background:var(--frozen-soft);border:1.5px solid var(--frozen)}
+.swatch.adapter{background:var(--adapter-soft);border:1.5px solid var(--adapter)}
+
+figure{margin:0 0 44px}
+figure svg{width:100%;height:auto;display:block;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow)}
+figcaption{margin-top:10px;font-size:13.5px;color:var(--ink-muted)}
+figcaption b{color:var(--ink);font-weight:600}
+.fig-title{font-size:15px;font-weight:700;margin:0 0 10px}
+
+svg text{font-family:"IBM Plex Sans KR",system-ui,sans-serif;fill:currentColor}
+svg .mono-t{font-family:"IBM Plex Mono",ui-monospace,monospace}
+svg .lbl{font-size:12px;fill:var(--ink-muted)}
+svg .arrow-lbl{font-size:11px;fill:var(--ink-muted)}
+
+.note{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;font-size:14px;color:var(--ink-muted);box-shadow:var(--shadow)}
+.note code{background:var(--adapter-soft);color:var(--adapter);padding:1px 5px;border-radius:4px;font-size:12.5px}
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">research-ai · 내부 구조 설명</div>
+  <h1>LoRA 어댑터, 실제로 뭐가 바뀌는 건가</h1>
+  <p class="lede">
+    "어댑터"는 별도의 파이프라인 단계가 아니다. Qwen3-14B 안의 몇몇 가중치 행렬에
+    <b style="color:var(--adapter)">작은 숫자 뭉치</b>를 덧붙여서, 그 가중치가 조금 다르게
+    계산되게 만드는 것이다. 아래 세 장면은 그걸 이 프로젝트의 실제 파일 이름으로 보여준다.
+  </p>
+  <div class="legend">
+    <span><i class="swatch frozen"></i> 베이스 모델 — 28GB, 학습 때도 안 바뀜</span>
+    <span><i class="swatch adapter"></i> 어댑터 — 246MB, 학습으로 만들어진 부분</span>
+  </div>
+
+  <!-- Figure 1: 추론(생성) 시점 -->
+  <p class="fig-title">1. 오늘 bond.md 한 장이 만들어지는 길 (추론 시점)</p>
+  <figure>
+    <svg viewBox="0 0 860 400" role="img" aria-label="data/2026-10-14/naver_bond.json와 DIGEST_PROMPT가 Qwen3-14B 베이스 모델과 qwen3_14b_lora 어댑터를 거쳐 output/2026-10-14/bond.md로 생성되고, 같은 베이스 모델에서 어댑터를 끈 경로는 strategy.md 안의 핵심 쟁점 정리로 이어지는 것을 보여준다.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <!-- 입력 박스 2개 -->
+      <rect x="20" y="40" width="190" height="56" rx="8" fill="none" stroke="currentColor" opacity=".6"/>
+      <text x="115" y="62" text-anchor="middle" class="mono-t" font-size="11.5">data/2026-10-14/</text>
+      <text x="115" y="77" text-anchor="middle" class="mono-t" font-size="11.5">naver_bond.json</text>
+      <text x="115" y="90" text-anchor="middle" class="lbl">오늘 채권 리포트 원문</text>
+
+      <rect x="20" y="120" width="190" height="56" rx="8" fill="none" stroke="currentColor" opacity=".6"/>
+      <text x="115" y="142" text-anchor="middle" class="mono-t" font-size="11.5">DIGEST_PROMPT</text>
+      <text x="115" y="158" text-anchor="middle" class="lbl">"분석 브리핑 써라" 지시문 틀</text>
+
+      <!-- 입력 -> 모델 박스 (합류) -->
+      <path d="M210,68 L300,68 L300,135" fill="none" stroke="currentColor" opacity=".6"/>
+      <path d="M210,148 L300,148 L300,135" fill="none" stroke="currentColor" opacity=".6"/>
+      <line x1="300" y1="135" x2="340" y2="135" stroke="currentColor" opacity=".6" marker-end="url(#ar)"/>
+
+      <!-- 모델 박스: 베이스 + 어댑터 부착 -->
+      <rect x="345" y="60" width="230" height="150" rx="10" fill="var(--frozen-soft)" stroke="var(--frozen)" stroke-width="1.5"/>
+      <text x="460" y="88" text-anchor="middle" font-size="13" font-weight="600">Qwen3-14B</text>
+      <text x="460" y="104" text-anchor="middle" class="lbl">베이스 모델 · 28GB · 고정</text>
+
+      <!-- 어댑터 칩: 베이스 박스 모서리에 겹쳐 부착 -->
+      <rect x="430" y="150" width="175" height="54" rx="8" fill="var(--adapter-soft)" stroke="var(--adapter)" stroke-width="1.8"/>
+      <text x="517" y="171" text-anchor="middle" class="mono-t" font-size="11.5" fill="var(--adapter)">qwen3_14b_lora</text>
+      <text x="517" y="186" text-anchor="middle" class="lbl">어댑터 · 246MB · 부착됨</text>
+      <text x="460" y="128" text-anchor="middle" class="arrow-lbl">+ 아래 어댑터가 가중치 일부에 더해짐</text>
+
+      <!-- 모델 -> 출력 -->
+      <line x1="575" y1="135" x2="650" y2="135" stroke="currentColor" opacity=".6" marker-end="url(#ar)"/>
+      <text x="612" y="123" text-anchor="middle" class="arrow-lbl">생성</text>
+      <rect x="655" y="100" width="185" height="70" rx="8" fill="none" stroke="currentColor" opacity=".6"/>
+      <text x="747" y="128" text-anchor="middle" class="mono-t" font-size="11.5">output/2026-10-14/</text>
+      <text x="747" y="143" text-anchor="middle" class="mono-t" font-size="11.5">bond.md</text>
+      <text x="747" y="158" text-anchor="middle" class="lbl">오늘의 채권 브리핑</text>
+
+      <!-- 구분선 -->
+      <line x1="20" y1="245" x2="840" y2="245" stroke="currentColor" opacity=".15" stroke-dasharray="3 5"/>
+      <text x="20" y="235" class="lbl">같은 베이스 모델, 어댑터만 꺼서 쓰는 경로도 있다 —</text>
+      <text x="245" y="235" class="mono-t lbl">generate_short(use_adapter=False)</text>
+
+      <!-- 아래쪽: 어댑터 꺼진 경로 -->
+      <rect x="20" y="265" width="190" height="56" rx="8" fill="none" stroke="currentColor" opacity=".6"/>
+      <text x="115" y="287" text-anchor="middle" class="mono-t" font-size="11.5">STRATEGY_EXTRA</text>
+      <text x="115" y="302" text-anchor="middle" class="mono-t" font-size="11.5">_PROMPT</text>
+      <text x="115" y="315" text-anchor="middle" class="lbl">오늘 매크로·채권·섹터 요약</text>
+
+      <line x1="210" y1="293" x2="340" y2="293" stroke="currentColor" opacity=".6" marker-end="url(#ar)"/>
+
+      <rect x="345" y="268" width="230" height="56" rx="10" fill="var(--frozen-soft)" stroke="var(--frozen)" stroke-width="1.5"/>
+      <text x="460" y="291" text-anchor="middle" font-size="13" font-weight="600">Qwen3-14B</text>
+      <text x="460" y="306" text-anchor="middle" class="lbl">베이스만 · 어댑터 꺼짐</text>
+
+      <line x1="575" y1="293" x2="650" y2="293" stroke="currentColor" opacity=".6" marker-end="url(#ar)"/>
+      <rect x="655" y="258" width="185" height="70" rx="8" fill="none" stroke="currentColor" opacity=".6"/>
+      <text x="747" y="286" text-anchor="middle" class="mono-t" font-size="11.5">strategy.md 안</text>
+      <text x="747" y="301" text-anchor="middle">"오늘의 핵심 쟁점 정리"</text>
+      <text x="747" y="316" text-anchor="middle" class="lbl">(AI 종합의견 자리)</text>
+    </svg>
+    <figcaption>
+      리포트 하나를 만들 때 모델은 항상 <b>Qwen3-14B(고정) + qwen3_14b_lora(학습된 부분)</b>를 같이 써요.
+      다만 짧은 쟁점 정리 하나만은 어댑터가 긴 글 투로 편향돼 있어서, 어댑터를 끈 베이스 모델만 씁니다.
+    </figcaption>
+  </figure>
+
+  <!-- Figure 2: 어댑터 내부 -->
+  <p class="fig-title">2. 어댑터를 열어보면 — 가중치 하나에 작은 행렬 두 개가 더해질 뿐</p>
+  <figure>
+    <svg viewBox="0 0 760 300" role="img" aria-label="베이스 모델의 가중치 행렬 W에, 어댑터의 작은 두 행렬 B와 A를 곱한 값을 더해서 실제 추론에 쓰이는 가중치 W프라임을 만든다. W는 크고 고정이며 B와 A는 작고 학습된 부분이다.">
+      <!-- W (base) -->
+      <rect x="20" y="70" width="150" height="150" rx="8" fill="var(--frozen-soft)" stroke="var(--frozen)" stroke-width="1.5"/>
+      <text x="95" y="150" text-anchor="middle" font-size="20" font-weight="700" class="mono-t">W</text>
+      <text x="95" y="240" text-anchor="middle" class="lbl">q_proj 등 레이어의</text>
+      <text x="95" y="254" text-anchor="middle" class="lbl">원래 가중치 · 고정</text>
+
+      <text x="195" y="150" text-anchor="middle" font-size="22">+</text>
+
+      <!-- B x A (adapter), low rank -->
+      <rect x="225" y="70" width="34" height="150" rx="6" fill="var(--adapter-soft)" stroke="var(--adapter)" stroke-width="1.8"/>
+      <text x="242" y="150" text-anchor="middle" font-size="15" font-weight="700" class="mono-t" fill="var(--adapter)">B</text>
+      <text x="242" y="240" text-anchor="middle" class="lbl">(세로로</text>
+      <text x="242" y="254" text-anchor="middle" class="lbl">작음)</text>
+
+      <text x="272" y="150" text-anchor="middle" font-size="18">×</text>
+
+      <rect x="285" y="138" width="150" height="24" rx="6" fill="var(--adapter-soft)" stroke="var(--adapter)" stroke-width="1.8"/>
+      <text x="360" y="155" text-anchor="middle" font-size="13" font-weight="700" class="mono-t" fill="var(--adapter)">A</text>
+      <text x="360" y="190" text-anchor="middle" class="lbl">(가로로 작음 · r=16)</text>
+
+      <text x="455" y="150" text-anchor="middle" font-size="22">=</text>
+
+      <!-- Result W' -->
+      <rect x="485" y="70" width="255" height="150" rx="8" fill="var(--frozen-soft)" stroke="var(--adapter)" stroke-width="2"/>
+      <text x="612" y="140" text-anchor="middle" font-size="16" font-weight="700" class="mono-t">W + B·A</text>
+      <text x="612" y="162" text-anchor="middle" class="lbl">실제 추론에서 쓰는 값</text>
+      <text x="612" y="180" text-anchor="middle" class="lbl">(거의 W, 아주 조금 어댑터가 섞임)</text>
+    </svg>
+    <figcaption>
+      q_proj·k_proj·v_proj·o_proj·gate_proj·up_proj·down_proj, 이 7종류 레이어마다 이렇게
+      작은 <code>B</code>·<code>A</code> 한 쌍이 끼워져요. 그래서 어댑터 전체 파일이 <b>246MB</b>인 거예요 —
+      베이스 모델(<b>28GB</b>)의 약 <b>1/114</b> 크기밖에 안 돼요.
+    </figcaption>
+  </figure>
+
+  <!-- Figure 3: 학습 시점 -->
+  <p class="fig-title">3. 그 어댑터는 어떻게 만들어졌나 (학습 시점)</p>
+  <figure>
+    <svg viewBox="0 0 860 220" role="img" aria-label="train_v3.jsonl 정답 데이터가 train_lora.py 학습을 거치면서 B와 A 행렬만 조정되고 베이스 모델 W는 그대로 유지된 채, qwen3_14b_lora 폴더에 adapter_model.safetensors 파일로 저장된다.">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <rect x="20" y="70" width="180" height="60" rx="8" fill="none" stroke="currentColor" opacity=".6"/>
+      <text x="110" y="95" text-anchor="middle" class="mono-t" font-size="11.5">train_v3.jsonl</text>
+      <text x="110" y="110" text-anchor="middle" class="lbl">정답 예시(날짜 분할)</text>
+      <text x="110" y="123" text-anchor="middle" class="lbl">127건</text>
+
+      <line x1="200" y1="100" x2="265" y2="100" stroke="currentColor" opacity=".6" marker-end="url(#ar2)"/>
+
+      <rect x="270" y="55" width="230" height="90" rx="10" fill="var(--surface)" stroke="currentColor" stroke-width="1.3" opacity=".9"/>
+      <text x="385" y="85" text-anchor="middle" class="mono-t" font-size="12.5" font-weight="600">train_lora.py</text>
+      <text x="385" y="104" text-anchor="middle" class="lbl" fill="var(--frozen)">W(베이스)는 그대로 둠</text>
+      <text x="385" y="120" text-anchor="middle" class="lbl" fill="var(--adapter)">B·A(어댑터)만 조정</text>
+
+      <line x1="500" y1="100" x2="565" y2="100" stroke="currentColor" opacity=".6" marker-end="url(#ar2)"/>
+
+      <rect x="570" y="55" width="270" height="110" rx="8" fill="var(--adapter-soft)" stroke="var(--adapter)" stroke-width="1.8"/>
+      <text x="705" y="83" text-anchor="middle" class="mono-t" font-size="11.5" fill="var(--adapter)">qwen3_14b_lora/</text>
+      <text x="705" y="99" text-anchor="middle" class="mono-t" font-size="11.5" fill="var(--adapter)">adapter_model.safetensors</text>
+      <text x="705" y="118" text-anchor="middle" class="lbl">246MB — 이 파일이 "어댑터"다</text>
+      <text x="705" y="134" text-anchor="middle" class="lbl">(베이스 모델 28GB는 복사되지 않음)</text>
+
+      <text x="385" y="175" text-anchor="middle" class="lbl">※ v1b/v2b 등 "버전"은 이 학습을 다른 데이터·설정으로 다시 돌려 나온 adapter_model.safetensors들이다</text>
+    </svg>
+    <figcaption>
+      학습이 "만드는" 것은 새 모델이 아니라 이 <b>246MB짜리 파일 하나</b>예요.
+      베이스 모델 28GB는 학습 중에도, 추론 중에도 그대로 디스크에 한 벌만 있어요.
+    </figcaption>
+  </figure>
+
+  <div class="note">
+    코드로 보면: <code>local_llm.py</code>의 <code>ADAPTER_PATHS</code>가 "이 베이스 모델엔 이 어댑터 폴더를 얹어라"를
+    적어둔 표예요. <code>ask_local(..., use_adapter=False)</code>를 주면 <code>model.disable_adapter()</code>로
+    위 그림 1의 아래쪽 경로(어댑터 없이 베이스만)를 타요.
+  </div>
+</div>

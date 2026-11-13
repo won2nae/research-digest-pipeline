@@ -23,3 +23,6 @@ __pycache__/
 # 평가/디버그 결과 (원문 발췌 포함)
 *.json
 !.mcp.json
+
+# 정리 전 원본 백업 (증권사 원문 파생 산출물 포함)
+paperwork/backup_before_*/
