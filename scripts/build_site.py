@@ -54,6 +54,10 @@ def first_headline(md_text: str) -> str:
     return re.sub(r"\*\*|`", "", m.group(1)).strip() if m else ""
 
 
+# 사이트에 노출하지 않는 지표 (과거 macro_shocks.json에 남아 있어도 숨긴다)
+EXCLUDED_CODES = {"CN10YT=RR"}
+
+
 def load_market(date: str) -> dict | None:
     path = DATA_DIR / date / "macro_shocks.json"
     if not path.exists():
@@ -67,6 +71,7 @@ def load_market(date: str) -> dict | None:
             "unit": it["unit"],
         }
         for it in items
+        if it["code"] not in EXCLUDED_CODES
     }
 
 
