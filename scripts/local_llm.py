@@ -170,16 +170,77 @@ def _heading_loop_cutoff(text: str, threshold: float = 0.85, min_prior: int = 2,
     return None
 
 
+_HANGUL_RE = re.compile(r"[가-힣]")
+_HAN_RE = re.compile(r"[一-鿿]")
+_LATIN_RE = re.compile(r"[A-Za-z]")
+
+
+def _is_table_block(block: str) -> bool:
+    lines = [l for l in block.strip().split("\n") if l.strip()]
+    if not lines:
+        return False
+    return sum(1 for l in lines if l.strip().startswith("|")) / len(lines) > 0.5
+
+
+def _is_heading_only_block(block: str) -> bool:
+    lines = [l for l in block.strip().split("\n") if l.strip()]
+    return len(lines) == 1 and lines[0].strip().startswith("#")
+
+
+def _language_drift_cutoff(text: str, min_chinese_chars: int = 10, min_body_len: int = 120, max_hangul_ratio: float = 0.1):
+    """한국어로만 쓰라고 지시했는데, repetition_penalty를 피하려는 듯 같은 내용을
+    중국어/영어로 통째로 다시 쓰거나 중국어로 단어를 계속 이어붙이는 경우를 찾는다
+    (output/2026-11-05 sector.md: "## [能源/POWER] ..." 중국어 제목 + 이미 한국어로
+    쓴 스페이스X-퀄컴 단락을 영어로 또 쓴 사례. output/2026-11-03 strategy.md:
+    "...Risk担忧·...Risk担忧·..." 식 중국어 단어 나열 반복. output/2026-10-30
+    bond.md: "foreigners가 buy treasuries futures를..." 식 영한 혼용 비문).
+
+    표(마크다운 테이블)와 출처 인용(">")은 영어 고유명사·티커가 정상적으로 섞이는
+    곳이라 제외한다. 헤딩 한 줄만 있는 블록도 "Risk-On/Risk-Off" 같은 영어 혼용
+    제목이 흔해서 영어 판정(B)에서는 빼지만, 한자가 다량 섞인 건 헤딩이라도 위
+    사례처럼 명백히 이상하므로 중국어 판정(A)에서는 헤딩도 그대로 본다."""
+    blocks = []
+    pos = 0
+    for part in re.split(r"(\n{2,})", text):
+        if not part.startswith("\n"):
+            blocks.append((pos, part))
+        pos += len(part)
+
+    for start, block in blocks:
+        stripped = block.strip()
+        if not stripped or _is_table_block(block) or stripped.startswith(">"):
+            continue
+        hangul = len(_HANGUL_RE.findall(block))
+        han = len(_HAN_RE.findall(block))
+        latin = len(_LATIN_RE.findall(block))
+
+        if han >= min_chinese_chars and han > hangul:
+            return start, f"중국어 드리프트(한자 {han}자): {stripped[:30]}..."
+
+        if _is_heading_only_block(block) or len(stripped) < min_body_len:
+            continue
+        letters = hangul + han + latin
+        if letters == 0:
+            continue
+        ratio = hangul / letters
+        if ratio < max_hangul_ratio:
+            return start, f"영어 드리프트(한글 비율 {ratio:.0%}): {stripped[:30]}..."
+    return None
+
+
 def trim_runaway_repetition(text: str) -> str:
     """repetition_penalty로도 못 막는 디코딩 degenerate loop을 감지해서, 반복이
     시작되는 지점에서 잘라낸다.
 
-    두 가지 방식을 같이 쓴다 (2026-11-01, 운영 로그로 둘 다 필요함을 확인):
+    세 가지 방식을 같이 쓴다 (2026-11-01/2026-11-07, 운영 로그로 필요성 확인):
     1. 문장 단위 근접중복 (`_sentence_loop_cutoff`) — 마침표로 끝나는 서술문 반복.
     2. 헤딩 단위 반복 (`_heading_loop_cutoff`) — 불릿 목록처럼 마침표 없이
        "### 소제목" 아래 본문이 통째로 재생성되는 경우. 1번만으로는 마침표가
        없는 불릿 반복을 못 잡아서 추가함 (output/2026-11-02 테스트에서 발견).
-    둘 중 더 일찍(앞쪽에서) 반복이 시작된 지점을 기준으로 자른다.
+    3. 언어 드리프트 (`_language_drift_cutoff`) — 같은 내용을 중국어/영어로
+       다시 쓰는 경우. 1·2번은 "같은 언어로 쓰인 문장/헤딩"끼리만 비교해서
+       언어가 바뀌면 전혀 못 잡는다 (output/2026-11-05 sector.md에서 발견).
+    셋 중 더 일찍(앞쪽에서) 반복이 시작된 지점을 기준으로 자른다.
 
     no_repeat_ngram_size로 생성 자체를 막아봤으나 비문/가비지 출력으로 더 나쁘게
     터져서, 생성은 그대로 두고 후처리로 걸러내는 쪽을 택함."""
@@ -190,6 +251,9 @@ def trim_runaway_repetition(text: str) -> str:
     r2 = _heading_loop_cutoff(text)
     if r2:
         candidates.append(r2)
+    r3 = _language_drift_cutoff(text)
+    if r3:
+        candidates.append(r3)
     if not candidates:
         return text
 

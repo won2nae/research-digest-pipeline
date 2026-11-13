@@ -32,6 +32,9 @@ python3 scripts/vectorstore.py "$DATE"
 echo "=== [$DATE] 4. 요약 생성 ==="
 python3 scripts/summarize.py "$DATE"
 
+echo "=== [$DATE] 4.5 최종 점검 (반복 루프 / 언어 드리프트, DART·뉴스까지 포함) ==="
+python3 scripts/final_check.py "$DATE"
+
 echo "=== [$DATE] 5. 정적 사이트 재생성 + 배포 ==="
 python3 scripts/build_site.py
 cd site

@@ -22,20 +22,28 @@ NEWS_DENIED_MARKERS = ("허용되지 않", "도구 권한", "권한 프롬프트
 ROOT = Path(__file__).resolve().parent.parent
 
 INDICATOR_CODES = [
-    "KOSPI", "KOSDAQ", "FX_USDKRW", "CLcv1", "GCcv1",
-    "US10YT=RR", "KR10YT=RR", ".DJI", ".INX", ".IXIC",
+    "KOSPI", "KOSDAQ", "FX_USDKRW", "CLcv1", "GCcv1", "SIcv1", "HGcv1", "NGcv1",
+    "US10YT=RR", "KR10YT=RR", "DE10YT=RR", "JP10YT=RR", "GB10YT=RR", "CN10YT=RR",
+    ".DJI", ".INX", ".IXIC",
 ]
 
 # 임계값: 일반적으로 시장에서 "의미있는 하루 변동"으로 보는 수준.
-# 지수/환율/유가는 %변동, 국채금리는 bp(절대) 변동 기준.
+# 지수/환율/원자재는 %변동, 국채금리는 bp(절대) 변동 기준.
 THRESHOLDS = {
     "KOSPI":      {"label": "코스피",        "type": "pct", "value": 1.5},
     "KOSDAQ":     {"label": "코스닥",        "type": "pct", "value": 2.0},
     "FX_USDKRW":  {"label": "원/달러 환율",   "type": "pct", "value": 1.0},
     "CLcv1":      {"label": "WTI 유가",      "type": "pct", "value": 3.0},
     "GCcv1":      {"label": "국제 금",       "type": "pct", "value": 2.5},
+    "SIcv1":      {"label": "국제 은",       "type": "pct", "value": 4.0},
+    "HGcv1":      {"label": "구리",         "type": "pct", "value": 3.0},
+    "NGcv1":      {"label": "천연가스",      "type": "pct", "value": 5.0},
     "US10YT=RR":  {"label": "미국 10년 국채금리", "type": "bp",  "value": 10.0},
     "KR10YT=RR":  {"label": "한국 10년 국채금리", "type": "bp",  "value": 8.0},
+    "DE10YT=RR":  {"label": "독일 10년 국채금리", "type": "bp",  "value": 10.0},
+    "JP10YT=RR":  {"label": "일본 10년 국채금리", "type": "bp",  "value": 5.0},
+    "GB10YT=RR":  {"label": "영국 10년 국채금리", "type": "bp",  "value": 10.0},
+    "CN10YT=RR":  {"label": "중국 10년 국채금리", "type": "bp",  "value": 8.0},
     ".DJI":       {"label": "다우존스",      "type": "pct", "value": 1.5},
     ".INX":       {"label": "S&P 500",      "type": "pct", "value": 1.5},
     ".IXIC":      {"label": "나스닥",        "type": "pct", "value": 2.0},
