@@ -2,7 +2,9 @@
 
 한국 지수(코스피·코스닥)는 네이버 자체 차트 API, 나머지(미국 지수·환율·원자재·금리)는
 Yahoo Finance 비공식 공개 API를 쓴다 (조사 결과 둘 다 이게 각 지표별 최대 과거 범위였음).
-한국 10년물 금리는 무료로 과거 데이터를 주는 소스를 못 찾아서 제외한다 (현재값만 표시).
+한국·독일·일본·영국 10년물 금리는 FRED(OECD 월별 장기금리 IRLTLT01*)에서 받는다
+(2026-11-13 추가, 월평균값이고 최신값이 1~2개월 늦다). 중국은 FRED가 봇 차단 페이지를 줘서
+과거 데이터를 못 받아 제외한다 (일별 수집이 쌓이는 구간만 표시).
 
 월별 데이터만 받는다 - 수십 년치를 일별로 받으면 사이트에 싣기엔 너무 크고,
 장기 추이를 보는 용도에는 월별로 충분하다. 최근 구간(일별)은 기존 파이프라인이
@@ -36,6 +38,33 @@ YAHOO_SYMBOLS = {
 }
 
 
+FRED_SERIES = {
+    "KR10YT=RR": "IRLTLT01KRM156N",
+    "DE10YT=RR": "IRLTLT01DEM156N",
+    "JP10YT=RR": "IRLTLT01JPM156N",
+    "GB10YT=RR": "IRLTLT01GBM156N",
+}
+
+
+def fetch_fred(series_id: str) -> list[tuple[str, float]]:
+    resp = requests.get(
+        "https://fred.stlouisfed.org/graph/fredgraph.csv",
+        headers=HEADERS, params={"id": series_id}, timeout=20,
+    )
+    resp.raise_for_status()
+    lines = resp.text.strip().splitlines()
+    if not lines or not lines[0].startswith("observation_date"):
+        raise ValueError("CSV가 아닌 응답")
+    points = []
+    for line in lines[1:]:
+        d, _, v = line.partition(",")
+        try:
+            points.append((d, round(float(v), 4)))
+        except ValueError:
+            continue  # 결측치(".")
+    return points
+
+
 def fetch_yahoo(symbol: str) -> list[tuple[str, float]]:
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
     resp = requests.get(
@@ -58,12 +87,26 @@ def fetch_yahoo(symbol: str) -> list[tuple[str, float]]:
 
 
 def main():
+    import sys
+    fred_only = "--fred-only" in sys.argv
     history = {}
+    if fred_only and OUT.exists():
+        history = json.loads(OUT.read_text(encoding="utf-8"))
 
-    for code, symbol in YAHOO_SYMBOLS.items():
+    for code, symbol in ({} if fred_only else YAHOO_SYMBOLS).items():
         print(f"[yahoo] {code} ({symbol}) 받는 중...")
         try:
             pts = fetch_yahoo(symbol)
+            print(f"  -> {len(pts)}건, 첫 날짜 {pts[0][0] if pts else '-'}")
+            history[code] = pts
+        except Exception as e:
+            print(f"  실패: {e}")
+        time.sleep(0.5)
+
+    for code, series_id in FRED_SERIES.items():
+        print(f"[fred] {code} ({series_id}) 받는 중...")
+        try:
+            pts = fetch_fred(series_id)
             print(f"  -> {len(pts)}건, 첫 날짜 {pts[0][0] if pts else '-'}")
             history[code] = pts
         except Exception as e:
