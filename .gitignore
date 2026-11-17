@@ -16,6 +16,9 @@ investment_output/
 for_tuning/qwen3_14b_lora*/
 for_tuning/**/checkpoint-*/
 
+# 지저분한 평가용 스크립트 - 로컬에만 두고 git엔 안 올림
+for_tuning/eval_*.py
+
 # 사이트는 별도 저장소(site/.git)로 관리
 site/
 
